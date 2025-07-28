@@ -892,4 +892,262 @@
             
             showProgress();
             compressedFiles = [];
-            totalCompressedSize = 0
+            totalCompressedSize = 0;
+
+            const quality = parseInt(qualitySlider.value);
+            const maxWidth = parseInt(widthSlider.value);
+            const maxHeight = parseInt(heightSlider.value);
+
+            try {
+                for (let i = 0; i < originalFiles.length; i++) {
+                    updateProgress((i / originalFiles.length) * 100);
+                    
+                    const result = await compressImage(originalFiles[i], quality, maxWidth, maxHeight);
+                    compressedFiles.push(result);
+                    totalCompressedSize += result.compressed.size;
+
+                    // Update preview for first image
+                    if (i === 0) {
+                        updateCompressedPreview(result);
+                    }
+                }
+
+                updateProgress(100);
+                setTimeout(() => {
+                    hideProgress();
+                    updateStats();
+                    downloadBtn.classList.remove('hidden');
+                    compressionStats.style.display = 'block';
+                }, 500);
+
+            } catch (error) {
+                console.error('Compression error:', error);
+                alert('An error occurred during compression. Please try again.');
+            }
+
+            compressBtn.disabled = false;
+            compressBtn.innerHTML = '🗜️ Compress Images';
+        });
+
+        // Update Compressed Preview
+        function updateCompressedPreview(result) {
+            const canvas = result.canvas;
+            const dataURL = canvas.toDataURL(result.original.type, parseInt(qualitySlider.value) / 100);
+            
+            document.getElementById('compressedPreview').src = dataURL;
+            document.getElementById('compressedDimensions').textContent = `${result.dimensions.width} × ${result.dimensions.height}`;
+            document.getElementById('compressedFileSize').textContent = formatFileSize(result.compressed.size);
+            document.getElementById('compressedQuality').textContent = qualitySlider.value + '%';
+        }
+
+        // Update Stats
+        function updateStats() {
+            document.getElementById('originalSize').textContent = formatFileSize(totalOriginalSize);
+            document.getElementById('compressedSize').textContent = formatFileSize(totalCompressedSize);
+            
+            const savings = totalOriginalSize > 0 ? 
+                Math.round(((totalOriginalSize - totalCompressedSize) / totalOriginalSize) * 100) : 0;
+            document.getElementById('savings').textContent = savings + '%';
+            document.getElementById('imageCount').textContent = originalFiles.length;
+        }
+
+        // Download Functions
+        async function createZip(files) {
+            // Simple zip creation using JSZip-like functionality
+            // For this implementation, we'll create individual downloads
+            return files;
+        }
+
+        function downloadSingleFile(file, filename) {
+            const url = URL.createObjectURL(file);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Download Button Event
+        downloadBtn.addEventListener('click', async () => {
+            if (compressedFiles.length === 0) return;
+
+            downloadBtn.disabled = true;
+            downloadBtn.innerHTML = '<div class="loading">💾 Preparing Download...</div>';
+
+            try {
+                if (compressedFiles.length === 1) {
+                    // Single file download
+                    const result = compressedFiles[0];
+                    const filename = result.original.name.replace(/\.[^/.]+$/, '') + '_compressed.' + 
+                                   result.original.type.split('/')[1];
+                    downloadSingleFile(result.compressed, filename);
+                } else {
+                    // Multiple files - download individually with delay
+                    for (let i = 0; i < compressedFiles.length; i++) {
+                        const result = compressedFiles[i];
+                        const filename = result.original.name.replace(/\.[^/.]+$/, '') + '_compressed.' + 
+                                       result.original.type.split('/')[1];
+                        
+                        setTimeout(() => {
+                            downloadSingleFile(result.compressed, filename);
+                        }, i * 200); // Delay between downloads
+                    }
+                }
+
+                // Show success message
+                setTimeout(() => {
+                    downloadBtn.innerHTML = '✅ Downloaded!';
+                    setTimeout(() => {
+                        downloadBtn.innerHTML = '💾 Download All';
+                        downloadBtn.disabled = false;
+                    }, 2000);
+                }, 500);
+
+            } catch (error) {
+                console.error('Download error:', error);
+                alert('An error occurred during download. Please try again.');
+                downloadBtn.disabled = false;
+                downloadBtn.innerHTML = '💾 Download All';
+            }
+        });
+
+        // Reset Button Event
+        resetBtn.addEventListener('click', () => {
+            // Reset all variables
+            originalFiles = [];
+            compressedFiles = [];
+            totalOriginalSize = 0;
+            totalCompressedSize = 0;
+
+            // Hide elements
+            controls.style.display = 'none';
+            previewContainer.style.display = 'none';
+            compressionStats.style.display = 'none';
+            hideProgress();
+
+            // Hide buttons
+            compressBtn.classList.add('hidden');
+            downloadBtn.classList.add('hidden');
+            resetBtn.classList.add('hidden');
+
+            // Reset input
+            imageInput.value = '';
+
+            // Reset sliders to default
+            qualitySlider.value = 80;
+            qualityValue.textContent = '80%';
+            widthSlider.value = 1920;
+            widthValue.textContent = '1920px';
+            heightSlider.value = 1080;
+            heightValue.textContent = '1080px';
+
+            // Update stats
+            updateStats();
+        });
+
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Ctrl/Cmd + O to open files
+            if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+                e.preventDefault();
+                imageInput.click();
+            }
+
+            // Ctrl/Cmd + Enter to compress
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                if (!compressBtn.classList.contains('hidden') && !compressBtn.disabled) {
+                    compressBtn.click();
+                }
+            }
+
+            // Ctrl/Cmd + S to download
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                if (!downloadBtn.classList.contains('hidden') && !downloadBtn.disabled) {
+                    downloadBtn.click();
+                }
+            }
+
+            // Escape to reset
+            if (e.key === 'Escape') {
+                if (!resetBtn.classList.contains('hidden')) {
+                    resetBtn.click();
+                }
+            }
+        });
+
+        // Auto-compress feature (optional)
+        let autoCompressTimeout;
+        function scheduleAutoCompress() {
+            clearTimeout(autoCompressTimeout);
+            autoCompressTimeout = setTimeout(() => {
+                if (originalFiles.length > 0 && compressedFiles.length === 0 && !compressBtn.disabled) {
+                    // Auto compress after 2 seconds of inactivity
+                    // compressBtn.click();
+                }
+            }, 2000);
+        }
+
+        // Add auto-compress listeners
+        qualitySlider.addEventListener('input', scheduleAutoCompress);
+        widthSlider.addEventListener('input', scheduleAutoCompress);
+        heightSlider.addEventListener('input', scheduleAutoCompress);
+
+        // Performance optimization
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Optimized slider updates
+        const debouncedQualityUpdate = debounce((value) => {
+            qualityValue.textContent = value + '%';
+        }, 50);
+
+        const debouncedWidthUpdate = debounce((value) => {
+            widthValue.textContent = value + 'px';
+        }, 50);
+
+        const debouncedHeightUpdate = debounce((value) => {
+            heightValue.textContent = value + 'px';
+        }, 50);
+
+        // Memory management
+        function cleanupCanvases() {
+            const canvases = document.querySelectorAll('canvas');
+            canvases.forEach(canvas => {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            });
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', cleanupCanvases);
+
+        // Initialize stats display
+        updateStats();
+
+        // Add helpful tooltips via title attributes
+        qualitySlider.title = 'Lower quality = smaller file size, Higher quality = better image';
+        widthSlider.title = 'Maximum width in pixels (image will be scaled down if larger)';
+        heightSlider.title = 'Maximum height in pixels (image will be scaled down if larger)';
+        
+        // Add helpful keyboard shortcut info
+        console.log('🎹 Keyboard Shortcuts:');
+        console.log('Ctrl/Cmd + O: Open files');
+        console.log('Ctrl/Cmd + Enter: Compress images');
+        console.log('Ctrl/Cmd + S: Download compressed images');
+        console.log('Escape: Reset/Start over');
+    </script>
+</body>
+</html>
